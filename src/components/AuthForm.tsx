@@ -1,4 +1,5 @@
 "use client";
+
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useForm } from "react-hook-form";
@@ -9,18 +10,23 @@ import Link from "next/link";
 import { toast } from "sonner";
 import FormField from "./shared/FormField";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 
-const authFormSchema = (type: FormType) => {
-  return z.object({
-    name: type === "sign-in" ? z.string().min(3) : z.string().optional,
-    email: z.email(),
-    password: z.string().min(6),
+const authFormSchema = (type: FormType) =>
+  z.object({
+    name: type === "sign-in"
+      ? z.string().optional() 
+      : z.string().min(3, "Name must be at least 3 characters"), 
+    email: z.string().email("Invalid email"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
   });
-};
+
 
 const AuthForm = ({ type }: { type: FormType }) => {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
   const formSchema = authFormSchema(type);
+
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -31,38 +37,30 @@ const AuthForm = ({ type }: { type: FormType }) => {
   });
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
+    setLoading(true);
     try {
-      if (type === "sign-in") {
-        const res = await fetch("/api/auth/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(values),
-        });
+      const endpoint = type === "sign-in" ? "/api/auth/login" : "/api/auth/register";
 
-        if (!res.ok) throw new Error("Invalid credentials");
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(values),
+      });
 
-        toast.success("Signed in successfully!");
-        router.push("/");
-      } else {
-        const res = await fetch("/api/auth/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(values),
-        });
+      const data = await res.json();
 
-        if (!res.ok) throw new Error("Registration failed");
+      if (!res.ok) throw new Error(data?.error || "Something went wrong");
 
-        toast.success("Account created successfully!");
-        router.push("/auth/sign-in"); // redirect to sign-in
-      }
+      toast.success(type === "sign-in" ? "Signed in successfully!" : "Account created successfully!");
+
+      // If registering, redirect to sign-in; if signing in, go to dashboard/home
+      router.push(type === "sign-in" ? "/" : "/sign-in");
     } catch (error: unknown) {
-      if (error instanceof Error) {
-        console.error(error);
-        toast.error(error.message);
-      } else {
-        console.error(error);
-        toast.error("Something went wrong");
-      }
+      if (error instanceof Error) toast.error(error.message);
+      else toast.error("Something went wrong");
+      console.error(error);
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -70,18 +68,15 @@ const AuthForm = ({ type }: { type: FormType }) => {
 
   return (
     <div className="card-border lg:min-w-[566px]">
-      <div className="flex flex-col gap-6 card py-14 px-10 ">
+      <div className="flex flex-col gap-6 card py-14 px-10">
         <div className="flex flex-row gap-2 justify-center items-center">
           <Image src="/logo.svg" height={32} width={32} alt="logo" />
           <h2 className="text-primary-100">Prepwise</h2>
         </div>
-        <h3>Practice job interview with AI </h3>
+        <h3>Practice job interview with AI</h3>
 
         <Form {...form}>
-          <form
-            onSubmit={form.handleSubmit(onSubmit)}
-            className="w-full space-y-6 mt-4 "
-          >
+          <form onSubmit={form.handleSubmit(onSubmit)} className="w-full space-y-6 mt-4">
             {!isSignIn && (
               <FormField
                 control={form.control}
@@ -105,18 +100,16 @@ const AuthForm = ({ type }: { type: FormType }) => {
               type="password"
             />
 
-            <Button type="submit">
-              {isSignIn ? "SignIn" : "Create an Account"}
+            <Button type="submit" disabled={loading}>
+              {loading ? (isSignIn ? "Signing in..." : "Registering...") : isSignIn ? "Sign In" : "Create Account"}
             </Button>
           </form>
         </Form>
+
         <p className="text-center">
-          {!isSignIn ? "No Account Yet?" : "Have an account already?"}
-          <Link
-            href={isSignIn ? "/sign-up" : "/sign-in"}
-            className="font-bold text-user-primary ml-1 "
-          >
-            {!isSignIn ? "Sign In" : "Sign up"}
+          {!isSignIn ? "No account yet?" : "Have an account already?"}
+          <Link href={isSignIn ? "/sign-up" : "/sign-in"} className="font-bold text-user-primary ml-1">
+            {!isSignIn ? "Sign In" : "Sign Up"}
           </Link>
         </p>
       </div>
