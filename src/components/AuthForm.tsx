@@ -8,6 +8,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { toast } from "sonner";
 import FormField from "./shared/FormField";
+import { useRouter } from "next/navigation";
 
 const authFormSchema = (type: FormType) => {
   return z.object({
@@ -18,6 +19,7 @@ const authFormSchema = (type: FormType) => {
 };
 
 const AuthForm = ({ type }: { type: FormType }) => {
+  const router = useRouter();
   const formSchema = authFormSchema(type);
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -28,17 +30,39 @@ const AuthForm = ({ type }: { type: FormType }) => {
     },
   });
 
-  // 2. Define a submit handler.
-  function onSubmit(values: z.infer<typeof formSchema>) {
+  async function onSubmit(values: z.infer<typeof formSchema>) {
     try {
       if (type === "sign-in") {
-        console.log("SignIn", values);
+        const res = await fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(values),
+        });
+
+        if (!res.ok) throw new Error("Invalid credentials");
+
+        toast.success("Signed in successfully!");
+        router.push("/");
       } else {
-        console.log("SignUp", values);
+        const res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(values),
+        });
+
+        if (!res.ok) throw new Error("Registration failed");
+
+        toast.success("Account created successfully!");
+        router.push("/auth/sign-in"); // redirect to sign-in
       }
-    } catch (error) {
-      console.log(error);
-      toast.error(`There was an error ${error}`);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        console.error(error);
+        toast.error(error.message);
+      } else {
+        console.error(error);
+        toast.error("Something went wrong");
+      }
     }
   }
 
@@ -58,27 +82,27 @@ const AuthForm = ({ type }: { type: FormType }) => {
             onSubmit={form.handleSubmit(onSubmit)}
             className="w-full space-y-6 mt-4 "
           >
-            {!isSignIn &&
+            {!isSignIn && (
+              <FormField
+                control={form.control}
+                name="name"
+                label="Name"
+                placeholder="Enter your name"
+              />
+            )}
             <FormField
-            control={form.control}
-            name="name"
-            label="Name"
-            placeholder="Enter your name"
-            />
-            }
-           <FormField
-            control={form.control}
-            name="email"
-            label="Email"
-            placeholder="Enter your email"
-            type="email"
+              control={form.control}
+              name="email"
+              label="Email"
+              placeholder="Enter your email"
+              type="email"
             />
             <FormField
-            control={form.control}
-            name="password"
-            label="Password"
-            placeholder="Enter your password"
-            type="password"
+              control={form.control}
+              name="password"
+              label="Password"
+              placeholder="Enter your password"
+              type="password"
             />
 
             <Button type="submit">
