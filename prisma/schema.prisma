@@ -29,7 +29,7 @@ model Interview {
   id String @id @default(uuid())
   role String
   level String
-  techStack String
+  techStack String[] 
   type String
   amount Int
   question Json

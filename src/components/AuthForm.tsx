@@ -14,13 +14,13 @@ import { useState } from "react";
 
 const authFormSchema = (type: FormType) =>
   z.object({
-    name: type === "sign-in"
-      ? z.string().optional() 
-      : z.string().min(3, "Name must be at least 3 characters"), 
+    name:
+      type === "sign-in"
+        ? z.string().optional()
+        : z.string().min(3, "Name must be at least 3 characters"),
     email: z.string().email("Invalid email"),
     password: z.string().min(6, "Password must be at least 6 characters"),
   });
-
 
 const AuthForm = ({ type }: { type: FormType }) => {
   const router = useRouter();
@@ -39,7 +39,8 @@ const AuthForm = ({ type }: { type: FormType }) => {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setLoading(true);
     try {
-      const endpoint = type === "sign-in" ? "/api/auth/login" : "/api/auth/register";
+      const endpoint =
+        type === "sign-in" ? "/api/auth/login" : "/api/auth/register";
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -51,7 +52,11 @@ const AuthForm = ({ type }: { type: FormType }) => {
 
       if (!res.ok) throw new Error(data?.error || "Something went wrong");
 
-      toast.success(type === "sign-in" ? "Signed in successfully!" : "Account created successfully!");
+      toast.success(
+        type === "sign-in"
+          ? "Signed in successfully!"
+          : "Account created successfully!"
+      );
 
       // If registering, redirect to sign-in; if signing in, go to dashboard/home
       router.push(type === "sign-in" ? "/" : "/sign-in");
@@ -76,7 +81,10 @@ const AuthForm = ({ type }: { type: FormType }) => {
         <h3>Practice job interview with AI</h3>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="w-full space-y-6 mt-4">
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="w-full space-y-6 mt-4"
+          >
             {!isSignIn && (
               <FormField
                 control={form.control}
@@ -101,14 +109,23 @@ const AuthForm = ({ type }: { type: FormType }) => {
             />
 
             <Button type="submit" disabled={loading}>
-              {loading ? (isSignIn ? "Signing in..." : "Registering...") : isSignIn ? "Sign In" : "Create Account"}
+              {loading
+                ? isSignIn
+                  ? "Signing in..."
+                  : "Registering..."
+                : isSignIn
+                ? "Sign In"
+                : "Create Account"}
             </Button>
           </form>
         </Form>
 
         <p className="text-center">
           {!isSignIn ? "No account yet?" : "Have an account already?"}
-          <Link href={isSignIn ? "/sign-up" : "/sign-in"} className="font-bold text-user-primary ml-1">
+          <Link
+            href={isSignIn ? "/sign-up" : "/sign-in"}
+            className="font-bold text-user-primary ml-1"
+          >
             {!isSignIn ? "Sign In" : "Sign Up"}
           </Link>
         </p>

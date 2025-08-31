@@ -1,40 +1,62 @@
-import { google } from "@ai-sdk/google";
+import { NextResponse } from "next/server";
+import { PrismaClient } from "@/generated/prisma";
 import { generateText } from "ai";
+import { google } from "@ai-sdk/google";
 
-export async function GET() {
-  return Response.json(
-    { success: true, message: "Working fine" },
-    { status: 200 }
-  );
-}
+const prisma = new PrismaClient();
 
-export async function POST(request: Request) {
-  const { role, level, techstack, type, amount } = await request.json();
-
+export async function POST(req: Request) {
   try {
+    const body = await req.json();
+    const { role, level, techstack, type, amount, userId } = body;
+
+    // Ensure techstack is always an array
+    const techStackArray = Array.isArray(techstack) ? techstack : [techstack];
+
+    // Generate questions using AI
     const { text } = await generateText({
-     model: google("gemini-2.5-flash"),
+      model: google("gemini-2.5-flash"),
       prompt: `Prepare questions for a job interview.
         The job role is ${role}.
         The job experience level is ${level}.
-        The tech stack used in the job is: ${techstack}.
+        The tech stack used in the job is: ${techStackArray.join(", ")}.
         The focus between behavioural and technical questions should lean towards: ${type}.
         The amount of questions required is: ${amount}.
         Please return only the questions, without any additional text.
         The questions are going to be read by a voice assistant so do not use "/" or "*" or any other special characters which might break the voice assistant.
         Return the questions formatted like this:
         ["Question 1", "Question 2", "Question 3"]
-        
-        Thank you! <3
       `,
     });
 
-    console.log("Generated Questions:", text);
+    const questionsArray = JSON.parse(text);
 
-    // Return the generated text in the response
-    return Response.json({ success: true, questions: text }, { status: 200 });
+    // Save in DB
+    const interview = await prisma.interview.create({
+      data: {
+        role,
+        level,
+        techStack: techStackArray, // ✅ save as array
+        type,
+        amount: Number(amount),
+        question: questionsArray,
+        userId,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        success: true,
+        questions: questionsArray,
+        interviewId: interview.id,
+      },
+      { status: 200 }
+    );
   } catch (error) {
-    console.log(error);
-    return Response.json({ success: false, error }, { status: 500 });
+    console.error("Interview generation error:", error);
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
   }
 }
