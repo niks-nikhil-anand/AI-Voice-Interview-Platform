@@ -2,46 +2,82 @@ import { NextResponse } from "next/server";
 import { PrismaClient } from "@/generated/prisma";
 import { generateText } from "ai";
 import { google } from "@ai-sdk/google";
+import { cookies } from "next/headers";
+import jwt from "jsonwebtoken";
 
 const prisma = new PrismaClient();
 
-export async function GET(req: Request) {
+// Function to extract JSON from potentially markdown-wrapped text
+function extractJsonFromText(text: string): any {
   try {
-    // Optional: fetch all interviews or just return a success message
-    // Example: return success true
-    return NextResponse.json(
-      { success: true, message: "API is working" },
-      { status: 200 }
-    );
+    // First, try to parse as-is
+    return JSON.parse(text);
+  } catch {
+    try {
+      // If that fails, try to extract JSON from markdown
+      const jsonMatch = text.match(/``````/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[1]);
+      }
 
-    // Or, to return all interviews:
-    // const interviews = await prisma.interview.findMany();
-    // return NextResponse.json({ success: true, interviews }, { status: 200 });
-  } catch (error) {
-    console.error("GET API error:", error);
-    return NextResponse.json(
-      { success: false, error: "Internal server error" },
-      { status: 500 }
-    );
+      // Try to find JSON object in the text
+      const objectMatch = text.match(/\{[\s\S]*\}/);
+      if (objectMatch) {
+        return JSON.parse(objectMatch[0]);
+      }
+
+      throw new Error("No valid JSON found in text");
+    } catch {
+      // Clean the response manually
+      const cleanText = text.replace(/```/g, "").replace(/`/g, "").trim();
+      return JSON.parse(cleanText);
+    }
   }
 }
 
-export async function POST(req: Request) {
+interface ExtractedParams {
+  role: string;
+  type: string;
+  level: string;
+  techstack: string[];
+  amount: number;
+}
+
+interface DecodedToken {
+  userId: string;
+}
+
+export async function POST(req: Request): Promise<NextResponse> {
   try {
     const body = await req.json();
-    const { role, level, techstack, type, amount, userId } = body;
+    const {
+      userResponses,
+      assistantPrompts,
+    }: { userResponses: string[]; assistantPrompts: string[] } = body;
 
     // Validate required fields
-    if (!role || !level || !techstack || !type || !amount || !userId) {
+    if (!userResponses || !assistantPrompts) {
       return NextResponse.json(
         { success: false, error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    // Check if user exists
+    const cookieStore = await cookies();
+    const authToken = cookieStore.get("userAuth")?.value;
+    console.log(authToken);
+
+    if (!authToken) {
+      return NextResponse.json({ msg: "No auth token found" }, { status: 401 });
+    }
+
+    // Verify and decode token
+    const decodeToken = jwt.decode(authToken) as DecodedToken | null;
+    console.log(decodeToken);
+    const id = decodeToken?.userId;
+
     const user = await prisma.user.findUnique({
-      where: { id: userId },
+      where: { id: id },
     });
 
     if (!user) {
@@ -51,18 +87,100 @@ export async function POST(req: Request) {
       );
     }
 
-    // Logging for debugging
-    console.log(`
-Role: ${role}
-Level: ${level}
-Techstack: ${techstack}
-Type: ${type}
-Amount: ${amount}
-UserId: ${userId}
-    `);
+    // Use Gemini to extract parameters from conversation
+    const conversationText = userResponses.join(" ");
+
+    const extractionPrompt = `
+Extract interview parameters from this conversation and return ONLY a valid JSON object.
+
+Conversation: "${conversationText}"
+
+Extract these 5 parameters:
+1. role: The job position mentioned (string)
+2. type: Interview type - technical, behavioral, or mixed (string)
+3. level: Experience level - beginner, intermediate, or hard (string)
+4. techstack: Array of technologies mentioned (array of strings)
+5. amount: Number of questions requested (number, default 5)
+
+If any parameter is missing from the conversation, use these defaults:
+- role: "Software Developer"
+- type: "mixed"
+- level: "intermediate"
+- techstack: ["JavaScript"]
+- amount: 5
+
+Return ONLY the JSON object with no markdown formatting, no code blocks, no additional text:
+{"role": "value", "type": "value", "level": "value", "techstack": ["value"], "amount": 5}
+`;
+
+    const { text: extractedParamsText } = await generateText({
+      model: google("gemini-2.5-flash"),
+      prompt: extractionPrompt,
+    });
+
+    console.log("Raw Gemini response:", extractedParamsText);
+
+    let extractedParams: ExtractedParams;
+    try {
+      extractedParams = extractJsonFromText(extractedParamsText);
+    } catch (parseError) {
+      console.error("Error parsing parameter extraction:", parseError);
+      console.error("Raw text:", extractedParamsText);
+
+      // Fallback to defaults
+      extractedParams = {
+        role: "Software Developer",
+        type: "mixed",
+        level: "intermediate",
+        techstack: ["JavaScript"],
+        amount: 5,
+      };
+    }
+
+    // Extract parameters
+    const { role, type, level, techstack, amount } = extractedParams;
+    const userId = user.id;
+
+    console.log("Extracted parameters:", {
+      role,
+      type,
+      level,
+      techstack,
+      amount,
+    });
+
+    // Validate extracted parameters
+    if (!role || !level || !techstack || !type || !amount) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Failed to extract valid interview parameters",
+        },
+        { status: 400 }
+      );
+    }
 
     // Ensure techstack is always an array
-    const techStackArray = Array.isArray(techstack) ? techstack : [techstack];
+    const techStackArray: string[] = Array.isArray(techstack)
+      ? techstack
+      : [techstack];
+
+    // Validate amount is a valid number
+    let questionAmount = Number(amount);
+    if (isNaN(questionAmount) || questionAmount <= 0) {
+      console.log("Invalid amount, using default of 5");
+      questionAmount = 5;
+    }
+
+    // Logging for debugging
+    console.log(`
+      Role: ${role}
+      Level: ${level}
+      Techstack: ${techStackArray.join(", ")}
+      Type: ${type}
+      Amount: ${questionAmount}
+      UserId: ${userId}
+    `);
 
     // Generate questions using AI
     const { text } = await generateText({
@@ -72,7 +190,7 @@ UserId: ${userId}
         The job experience level is ${level}.
         The tech stack used in the job is: ${techStackArray.join(", ")}.
         The focus between behavioural and technical questions should lean towards: ${type}.
-        The amount of questions required is: ${amount}.
+        The amount of questions required is: ${questionAmount}.
         Please return only the questions, without any additional text.
         The questions are going to be read by a voice assistant so do not use "/" or "*" or any other special characters which might break the voice assistant.
         Return the questions formatted like this:
@@ -80,7 +198,7 @@ UserId: ${userId}
       `,
     });
 
-    let questionsArray;
+    let questionsArray: string[];
     try {
       questionsArray = JSON.parse(text);
     } catch (parseError) {
@@ -107,7 +225,7 @@ UserId: ${userId}
         level,
         techStack: techStackArray,
         type,
-        amount: Number(amount),
+        amount: questionAmount,
         question: questionsArray,
         userId,
       },
@@ -120,6 +238,7 @@ UserId: ${userId}
         success: true,
         questions: questionsArray,
         interviewId: interview.id,
+        extractedParams: extractedParams, // Optional: return what was extracted for debugging
       },
       { status: 200 }
     );
