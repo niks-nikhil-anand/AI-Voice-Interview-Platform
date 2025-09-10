@@ -11,7 +11,7 @@ const InterviewCard = ({
   userId,
   role,
   type,
-  techstack,
+  techStack,
   createdAt,
 }: InterviewCardProps) => {
   const feedback = null as Feedback | null;
@@ -56,7 +56,7 @@ const InterviewCard = ({
           </p>
         </div>
         <div className="flex flex-row justify-between">
-          <DisplayTechIcons techStack={techstack} />
+          <DisplayTechIcons techStack={techStack} />
           <Button className="btn-primary">
             <Link
               href={

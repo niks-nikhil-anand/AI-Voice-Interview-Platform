@@ -4,8 +4,9 @@ import Link from "next/link";
 import React from "react";
 import { dummyInterviews } from "../../../constants";
 import InterviewCard from "@/components/shared/InterviewCard";
+import InterviewSection from "@/components/InterviewsSection";
 
-const page = () => {
+const Page = () => {
   return (
     <>
       <section className="card-cta">
@@ -21,13 +22,8 @@ const page = () => {
         <Image src={"/robot.png"} height={400} width={400} alt="robot" />
       </section>
 
-      <section className="flex flex-col gap-6 mt-8">
-        <h2>Your Interviews</h2>
-        <div className="flex md:flex-row flex-col gap-5">
-          {dummyInterviews.map((interview) => (
-            <InterviewCard {...interview} key={interview.id} />
-          ))}
-        </div>
+      <section>
+        <InterviewSection/>
       </section>
       <section className="flex flex-col gap-6 mt-8">
         <h2>Take an Interview</h2>
@@ -41,4 +37,4 @@ const page = () => {
   );
 };
 
-export default page;
+export default Page;
